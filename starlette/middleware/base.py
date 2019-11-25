@@ -56,9 +56,10 @@ class BaseHTTPMiddleware:
             task.result()
 
         response = StreamingResponse(
-            status_code=message["status"], content=body_stream()
+            status_code=message["status"],
+            raw_headers=message["headers"],
+            content=body_stream(),
         )
-        response.raw_headers = message["headers"]
         return response
 
     async def dispatch(

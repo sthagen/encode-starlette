@@ -117,7 +117,7 @@ def test_staticfiles_prevents_breaking_out_of_directory(tmpdir):
     loop = asyncio.get_event_loop()
     response = loop.run_until_complete(app.get_response(path, scope))
     assert response.status_code == 404
-    assert response.body == b"Not Found"
+    assert response.content == "Not Found"
 
 
 def test_staticfiles_never_read_file_for_head_method(tmpdir):

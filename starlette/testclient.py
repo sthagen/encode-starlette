@@ -227,7 +227,13 @@ class _ASGIAdapter(requests.adapters.HTTPAdapter):
                     raw_kwargs["body"].seek(0)
                     response_complete = True
             elif message["type"] == "http.response.template":
-                template = message["template"]
+
+                class TemplateName(str):
+                    @property
+                    def name(self) -> str:
+                        return str(self)
+
+                template = TemplateName(message["template"])
                 context = message["context"]
 
         try:

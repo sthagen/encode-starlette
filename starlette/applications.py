@@ -6,6 +6,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.errors import ServerErrorMiddleware
 from starlette.routing import BaseRoute, Router
+from starlette.templating import TemplateBackend
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 
@@ -45,10 +46,12 @@ class Starlette:
         ] = None,
         on_startup: typing.Sequence[typing.Callable] = None,
         on_shutdown: typing.Sequence[typing.Callable] = None,
+        templates: TemplateBackend = None,
     ) -> None:
         self._debug = debug
         self.state = State()
         self.router = Router(routes, on_startup=on_startup, on_shutdown=on_shutdown)
+        self.templates = templates
         self.exception_handlers = (
             {} if exception_handlers is None else dict(exception_handlers)
         )
@@ -96,6 +99,14 @@ class Starlette:
 
     def url_path_for(self, name: str, **path_params: str) -> URLPath:
         return self.router.url_path_for(name, **path_params)
+
+    def render_template(self, template_name: str, context: dict) -> str:
+        if self.templates is None:  # pragma: nocover
+            raise RuntimeError(
+                "TemplateResponse returned, but the application was not "
+                'configured with a "templates=..." argument.'
+            )
+        return self.templates.render_template(template_name, context)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         scope["app"] = self

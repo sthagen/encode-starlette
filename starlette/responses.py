@@ -39,12 +39,12 @@ class Response:
         media_type: str = None,
         background: BackgroundTask = None,
     ) -> None:
-        self.body = self.render(content)
+        self.content = content
         self.status_code = status_code
+        self.headers = MutableHeaders(headers)
         if media_type is not None:
             self.media_type = media_type
         self.background = background
-        self.init_headers(headers)
 
     def render(self, content: typing.Any) -> bytes:
         if content is None:
@@ -53,38 +53,22 @@ class Response:
             return content
         return content.encode(self.charset)
 
-    def init_headers(self, headers: typing.Mapping[str, str] = None) -> None:
-        if headers is None:
-            raw_headers = []  # type: typing.List[typing.Tuple[bytes, bytes]]
-            populate_content_length = True
-            populate_content_type = True
-        else:
-            raw_headers = [
-                (k.lower().encode("latin-1"), v.encode("latin-1"))
-                for k, v in headers.items()
-            ]
-            keys = [h[0] for h in raw_headers]
-            populate_content_length = b"content-length" not in keys
-            populate_content_type = b"content-type" not in keys
+    def build_headers(
+        self, body: bytes = None
+    ) -> typing.List[typing.Tuple[bytes, bytes]]:
+        headers = []
 
-        body = getattr(self, "body", b"")
-        if body and populate_content_length:
+        if "Content-Length" not in self.headers and body is not None:
             content_length = str(len(body))
-            raw_headers.append((b"content-length", content_length.encode("latin-1")))
+            headers.append((b"content-length", content_length.encode("latin-1")))
 
-        content_type = self.media_type
-        if content_type is not None and populate_content_type:
+        if "Content-Type" not in self.headers and self.media_type is not None:
+            content_type = self.media_type
             if content_type.startswith("text/"):
                 content_type += "; charset=" + self.charset
-            raw_headers.append((b"content-type", content_type.encode("latin-1")))
+            headers.append((b"content-type", content_type.encode("latin-1")))
 
-        self.raw_headers = raw_headers
-
-    @property
-    def headers(self) -> MutableHeaders:
-        if not hasattr(self, "_headers"):
-            self._headers = MutableHeaders(raw=self.raw_headers)
-        return self._headers
+        return headers + self.headers.raw
 
     def set_cookie(
         self,
@@ -112,20 +96,23 @@ class Response:
         if httponly:
             cookie[key]["httponly"] = True  # type: ignore
         cookie_val = cookie.output(header="").strip()
-        self.raw_headers.append((b"set-cookie", cookie_val.encode("latin-1")))
+        self.headers.append("set-cookie", cookie_val)
 
     def delete_cookie(self, key: str, path: str = "/", domain: str = None) -> None:
         self.set_cookie(key, expires=0, max_age=0, path=path, domain=domain)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        body = self.render(self.content)
+        headers = self.build_headers(body)
+
         await send(
             {
                 "type": "http.response.start",
                 "status": self.status_code,
-                "headers": self.raw_headers,
+                "headers": headers,
             }
         )
-        await send({"type": "http.response.body", "body": self.body})
+        await send({"type": "http.response.body", "body": body})
 
         if self.background is not None:
             await self.background()
@@ -144,7 +131,7 @@ class JSONResponse(Response):
 
     def render(self, content: typing.Any) -> bytes:
         return json.dumps(
-            content,
+            self.content,
             ensure_ascii=False,
             allow_nan=False,
             indent=None,
@@ -168,12 +155,66 @@ class RedirectResponse(Response):
         self.headers["location"] = quote_plus(str(url), safe=":/%#?&=@[]!$&'()*+,;")
 
 
+class TemplateResponse(Response):
+    def __init__(
+        self,
+        template_name: str,
+        context: dict,
+        status_code: int = 200,
+        headers: dict = None,
+        media_type: str = "text/html",
+        charset: str = "utf-8",
+        background: BackgroundTask = None,
+    ) -> None:
+        self.template_name = template_name
+        self.context = context
+
+        self.status_code = status_code
+        self.headers = MutableHeaders(headers)
+        self.media_type = media_type
+        self.charset = charset
+        self.background = background
+
+    def render_template(self, scope: Scope) -> bytes:
+        app = scope["app"]
+        text = app.render_template(
+            template_name=self.template_name, context=self.context
+        )
+        return text.encode(self.charset)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        body = self.render_template(scope)
+        headers = self.build_headers(body)
+
+        if "http.response.template" in scope.get("extensions", {}):
+            await send(
+                {
+                    "type": "http.response.template",
+                    "template": self.template_name,
+                    "context": self.context,
+                }
+            )
+
+        await send(
+            {
+                "type": "http.response.start",
+                "status": self.status_code,
+                "headers": headers,
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+
+        if self.background is not None:
+            await self.background()  # pragma: nocover
+
+
 class StreamingResponse(Response):
     def __init__(
         self,
         content: typing.Any,
         status_code: int = 200,
-        headers: dict = None,
+        headers: typing.Mapping[str, str] = None,
+        raw_headers: typing.List[typing.Tuple[bytes, bytes]] = None,
         media_type: str = None,
         background: BackgroundTask = None,
     ) -> None:
@@ -182,16 +223,16 @@ class StreamingResponse(Response):
         else:
             self.body_iterator = iterate_in_threadpool(content)
         self.status_code = status_code
+        self.headers = MutableHeaders(headers=headers, raw=raw_headers)
         self.media_type = self.media_type if media_type is None else media_type
         self.background = background
-        self.init_headers(headers)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         await send(
             {
                 "type": "http.response.start",
                 "status": self.status_code,
-                "headers": self.raw_headers,
+                "headers": self.build_headers(),
             }
         )
         async for chunk in self.body_iterator:
@@ -226,8 +267,8 @@ class FileResponse(Response):
         if media_type is None:
             media_type = guess_type(filename or path)[0] or "text/plain"
         self.media_type = media_type
+        self.headers = MutableHeaders(headers)
         self.background = background
-        self.init_headers(headers)
         if self.filename is not None:
             content_disposition = 'attachment; filename="{}"'.format(self.filename)
             self.headers.setdefault("content-disposition", content_disposition)
@@ -260,7 +301,7 @@ class FileResponse(Response):
             {
                 "type": "http.response.start",
                 "status": self.status_code,
-                "headers": self.raw_headers,
+                "headers": self.build_headers(),
             }
         )
         if self.send_header_only:

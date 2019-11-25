@@ -10,6 +10,65 @@ except ImportError:  # pragma: nocover
     jinja2 = None  # type: ignore
 
 
+class TemplateBackend:
+    def render_template(self, name: str, context: dict) -> str:
+        raise NotImplementedError()  # pragma: nocover
+
+
+class Jinja2Templates(TemplateBackend):
+    """
+    templates = Jinja2Templates("templates")
+
+    return templates.TemplateResponse("index.html", {"request": request})
+    """
+
+    def __init__(self, directory: str) -> None:
+        assert jinja2 is not None, "jinja2 must be installed to use Jinja2Templates"
+        self.env = self.get_env(directory)
+
+    def get_env(self, directory: str) -> "jinja2.Environment":
+        @jinja2.contextfunction
+        def url_for(context: dict, name: str, **path_params: typing.Any) -> str:
+            request = context["request"]
+            return request.url_for(name, **path_params)
+
+        loader = jinja2.FileSystemLoader(directory)
+        env = jinja2.Environment(loader=loader, autoescape=True)
+        env.globals["url_for"] = url_for
+        return env
+
+    def render_template(self, template_name: str, context: dict) -> str:
+        template = self.env.get_template(template_name)
+        return template.render(context)
+
+    # Using `templates.TemplateResponse` will be deprecated, in favour of
+    # `responses.TemplateResponse`.
+    def TemplateResponse(
+        self,
+        name: str,
+        context: dict,
+        status_code: int = 200,
+        headers: dict = None,
+        media_type: str = None,
+        background: BackgroundTask = None,
+    ) -> "_TemplateResponse":
+        if "request" not in context:
+            raise ValueError('context must include a "request" key')
+        template = self.get_template(name)
+        return _TemplateResponse(
+            template,
+            context,
+            status_code=status_code,
+            headers=headers,
+            media_type=media_type,
+            background=background,
+        )
+
+    def get_template(self, name: str) -> "jinja2.Template":
+        return self.env.get_template(name)
+
+
+# This class will be deprecated in favour of `responses.TemplateResponse`
 class _TemplateResponse(Response):
     media_type = "text/html"
 
@@ -34,55 +93,8 @@ class _TemplateResponse(Response):
             await send(
                 {
                     "type": "http.response.template",
-                    "template": self.template,
+                    "template": self.template.name,
                     "context": self.context,
                 }
             )
         await super().__call__(scope, receive, send)
-
-
-class Jinja2Templates:
-    """
-    templates = Jinja2Templates("templates")
-
-    return templates.TemplateResponse("index.html", {"request": request})
-    """
-
-    def __init__(self, directory: str) -> None:
-        assert jinja2 is not None, "jinja2 must be installed to use Jinja2Templates"
-        self.env = self.get_env(directory)
-
-    def get_env(self, directory: str) -> "jinja2.Environment":
-        @jinja2.contextfunction
-        def url_for(context: dict, name: str, **path_params: typing.Any) -> str:
-            request = context["request"]
-            return request.url_for(name, **path_params)
-
-        loader = jinja2.FileSystemLoader(directory)
-        env = jinja2.Environment(loader=loader, autoescape=True)
-        env.globals["url_for"] = url_for
-        return env
-
-    def get_template(self, name: str) -> "jinja2.Template":
-        return self.env.get_template(name)
-
-    def TemplateResponse(
-        self,
-        name: str,
-        context: dict,
-        status_code: int = 200,
-        headers: dict = None,
-        media_type: str = None,
-        background: BackgroundTask = None,
-    ) -> _TemplateResponse:
-        if "request" not in context:
-            raise ValueError('context must include a "request" key')
-        template = self.get_template(name)
-        return _TemplateResponse(
-            template,
-            context,
-            status_code=status_code,
-            headers=headers,
-            media_type=media_type,
-            background=background,
-        )
