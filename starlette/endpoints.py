@@ -23,8 +23,15 @@ class HTTPEndpoint:
 
     async def dispatch(self) -> None:
         request = Request(self.scope, receive=self.receive)
-        handler_name = "get" if request.method == "HEAD" else request.method.lower()
-        handler = getattr(self, handler_name, self.method_not_allowed)
+        handler_name = (
+            "get"
+            if request.method == "HEAD" and not hasattr(self, "head")
+            else request.method.lower()
+        )
+
+        handler: typing.Callable[[Request], typing.Any] = getattr(
+            self, handler_name, self.method_not_allowed
+        )
         is_async = asyncio.iscoroutinefunction(handler)
         if is_async:
             response = await handler(request)
