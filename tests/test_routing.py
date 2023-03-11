@@ -1,6 +1,13 @@
+import contextlib
 import functools
+import sys
 import typing
 import uuid
+
+if sys.version_info < (3, 8):
+    from typing_extensions import TypedDict  # pragma: no cover
+else:
+    from typing import TypedDict  # pragma: no cover
 
 import pytest
 
@@ -521,8 +528,8 @@ def test_subdomain_reverse_urls():
 async def echo_urls(request):
     return JSONResponse(
         {
-            "index": request.url_for("index"),
-            "submount": request.url_for("mount:submount"),
+            "index": str(request.url_for("index")),
+            "submount": str(request.url_for("mount:submount")),
         }
     )
 
@@ -622,11 +629,14 @@ def test_lifespan_async(test_client_factory):
         nonlocal shutdown_complete
         shutdown_complete = True
 
-    app = Router(
-        on_startup=[run_startup],
-        on_shutdown=[run_shutdown],
-        routes=[Route("/", hello_world)],
-    )
+    with pytest.deprecated_call(
+        match="The on_startup and on_shutdown parameters are deprecated"
+    ):
+        app = Router(
+            on_startup=[run_startup],
+            on_shutdown=[run_shutdown],
+            routes=[Route("/", hello_world)],
+        )
 
     assert not startup_complete
     assert not shutdown_complete
@@ -653,11 +663,14 @@ def test_lifespan_sync(test_client_factory):
         nonlocal shutdown_complete
         shutdown_complete = True
 
-    app = Router(
-        on_startup=[run_startup],
-        on_shutdown=[run_shutdown],
-        routes=[Route("/", hello_world)],
-    )
+    with pytest.deprecated_call(
+        match="The on_startup and on_shutdown parameters are deprecated"
+    ):
+        app = Router(
+            on_startup=[run_startup],
+            on_shutdown=[run_shutdown],
+            routes=[Route("/", hello_world)],
+        )
 
     assert not startup_complete
     assert not shutdown_complete
@@ -669,11 +682,83 @@ def test_lifespan_sync(test_client_factory):
     assert shutdown_complete
 
 
+def test_lifespan_state_unsupported(test_client_factory):
+    @contextlib.asynccontextmanager
+    async def lifespan(app):
+        yield {"foo": "bar"}
+
+    app = Router(
+        lifespan=lifespan,
+        routes=[Mount("/", PlainTextResponse("hello, world"))],
+    )
+
+    async def no_state_wrapper(scope, receive, send):
+        del scope["state"]
+        await app(scope, receive, send)
+
+    with pytest.raises(
+        RuntimeError, match='The server does not support "state" in the lifespan scope'
+    ):
+        with test_client_factory(no_state_wrapper):
+            raise AssertionError("Should not be called")  # pragma: no cover
+
+
+def test_lifespan_state_async_cm(test_client_factory):
+    startup_complete = False
+    shutdown_complete = False
+
+    class State(TypedDict):
+        count: int
+        items: typing.List[int]
+
+    async def hello_world(request: Request) -> Response:
+        # modifications to the state should not leak across requests
+        assert request.state.count == 0
+        # modify the state, this should not leak to the lifespan or other requests
+        request.state.count += 1
+        # since state.items is a mutable object this modification _will_ leak across
+        # requests and to the lifespan
+        request.state.items.append(1)
+        return PlainTextResponse("hello, world")
+
+    @contextlib.asynccontextmanager
+    async def lifespan(app: Starlette) -> typing.AsyncIterator[State]:
+        nonlocal startup_complete, shutdown_complete
+        startup_complete = True
+        state = State(count=0, items=[])
+        yield state
+        shutdown_complete = True
+        # modifications made to the state from a request do not leak to the lifespan
+        assert state["count"] == 0
+        # unless of course the request mutates a mutable object that is referenced
+        # via state
+        assert state["items"] == [1, 1]
+
+    app = Router(
+        lifespan=lifespan,
+        routes=[Route("/", hello_world)],
+    )
+
+    assert not startup_complete
+    assert not shutdown_complete
+    with test_client_factory(app) as client:
+        assert startup_complete
+        assert not shutdown_complete
+        client.get("/")
+        # Calling it a second time to ensure that the state is preserved.
+        client.get("/")
+    assert startup_complete
+    assert shutdown_complete
+
+
 def test_raise_on_startup(test_client_factory):
     def run_startup():
         raise RuntimeError()
 
-    router = Router(on_startup=[run_startup])
+    with pytest.deprecated_call(
+        match="The on_startup and on_shutdown parameters are deprecated"
+    ):
+        router = Router(on_startup=[run_startup])
     startup_failed = False
 
     async def app(scope, receive, send):
@@ -695,7 +780,10 @@ def test_raise_on_shutdown(test_client_factory):
     def run_shutdown():
         raise RuntimeError()
 
-    app = Router(on_shutdown=[run_shutdown])
+    with pytest.deprecated_call(
+        match="The on_startup and on_shutdown parameters are deprecated"
+    ):
+        app = Router(on_shutdown=[run_shutdown])
 
     with pytest.raises(RuntimeError):
         with test_client_factory(app):
