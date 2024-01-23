@@ -1,3 +1,11 @@
+## 0.36.1
+
+January 23, 2024
+
+#### Fixed
+
+* Check if "extensions" in scope before checking the extension [#2438](http://github.com/encode/starlette/pull/2438).
+
 ## 0.36.0
 
 January 22, 2024
@@ -185,7 +193,7 @@ March 9, 2023
 March 9, 2023
 
 ### Added
-* Support [lifespan state](/lifespan/) [#2060](https://github.com/encode/starlette/pull/2060),
+* Support [lifespan state](lifespan.md) [#2060](https://github.com/encode/starlette/pull/2060),
   [#2065](https://github.com/encode/starlette/pull/2065) and [#2064](https://github.com/encode/starlette/pull/2064).
 
 ### Changed
