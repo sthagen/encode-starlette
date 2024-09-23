@@ -12,7 +12,6 @@ from email.utils import format_datetime, formatdate
 from functools import partial
 from mimetypes import guess_type
 from random import choices as random_choices
-from typing import Mapping
 from urllib.parse import quote
 
 import anyio
@@ -273,6 +272,9 @@ class RangeNotSatisfiable(Exception):
         self.max_size = max_size
 
 
+_RANGE_PATTERN = re.compile(r"(\d*)-(\d*)")
+
+
 class FileResponse(Response):
     chunk_size = 64 * 1024
 
@@ -280,7 +282,7 @@ class FileResponse(Response):
         self,
         path: str | os.PathLike[str],
         status_code: int = 200,
-        headers: Mapping[str, str] | None = None,
+        headers: typing.Mapping[str, str] | None = None,
         media_type: str | None = None,
         background: BackgroundTask | None = None,
         filename: str | None = None,
@@ -454,7 +456,7 @@ class FileResponse(Response):
                 int(_[0]) if _[0] else file_size - int(_[1]),
                 int(_[1]) + 1 if _[0] and _[1] and int(_[1]) < file_size else file_size,
             )
-            for _ in re.findall(r"(\d*)-(\d*)", range_)
+            for _ in _RANGE_PATTERN.findall(range_)
             if _ != ("", "")
         ]
 
