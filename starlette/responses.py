@@ -11,7 +11,7 @@ from datetime import datetime
 from email.utils import format_datetime, formatdate
 from functools import partial
 from mimetypes import guess_type
-from random import choices as random_choices
+from secrets import token_hex
 from urllib.parse import quote
 
 import anyio
@@ -374,13 +374,7 @@ class FileResponse(Response):
                 while more_body:
                     chunk = await file.read(self.chunk_size)
                     more_body = len(chunk) == self.chunk_size
-                    await send(
-                        {
-                            "type": "http.response.body",
-                            "body": chunk,
-                            "more_body": more_body,
-                        }
-                    )
+                    await send({"type": "http.response.body", "body": chunk, "more_body": more_body})
 
     async def _handle_single_range(
         self, send: Send, start: int, end: int, file_size: int, send_header_only: bool
@@ -407,7 +401,8 @@ class FileResponse(Response):
         file_size: int,
         send_header_only: bool,
     ) -> None:
-        boundary = "".join(random_choices("abcdefghijklmnopqrstuvwxyz0123456789", k=13))
+        # In firefox and chrome, they use boundary with 95-96 bits entropy (that's roughly 13 bytes).
+        boundary = token_hex(13)
         content_length, header_generator = self.generate_multipart(
             ranges, boundary, file_size, self.headers["content-type"]
         )
@@ -419,10 +414,12 @@ class FileResponse(Response):
         else:
             async with await anyio.open_file(self.path, mode="rb") as file:
                 for start, end in ranges:
-                    await file.seek(start)
-                    chunk = await file.read(min(self.chunk_size, end - start))
                     await send({"type": "http.response.body", "body": header_generator(start, end), "more_body": True})
-                    await send({"type": "http.response.body", "body": chunk, "more_body": True})
+                    await file.seek(start)
+                    while start < end:
+                        chunk = await file.read(min(self.chunk_size, end - start))
+                        start += len(chunk)
+                        await send({"type": "http.response.body", "body": chunk, "more_body": True})
                     await send({"type": "http.response.body", "body": b"\n", "more_body": True})
                 await send(
                     {
