@@ -89,7 +89,7 @@ def test_redirect_response_content_length_header(
         await response(scope, receive, send)
 
     client: TestClient = test_client_factory(app)
-    response = client.request("GET", "/redirect", allow_redirects=False)
+    response = client.request("GET", "/redirect", follow_redirects=False)
     assert response.url == "http://testserver/redirect"
     assert response.headers["content-length"] == "0"
 
@@ -391,6 +391,18 @@ def test_set_cookie_path_none(test_client_factory: TestClientFactory) -> None:
     response = client.get("/")
     assert response.text == "Hello, world!"
     assert response.headers["set-cookie"] == "mycookie=myvalue; SameSite=lax"
+
+
+def test_set_cookie_samesite_none(test_client_factory: TestClientFactory) -> None:
+    async def app(scope: Scope, receive: Receive, send: Send) -> None:
+        response = Response("Hello, world!", media_type="text/plain")
+        response.set_cookie("mycookie", "myvalue", samesite=None)
+        await response(scope, receive, send)
+
+    client = test_client_factory(app)
+    response = client.get("/")
+    assert response.text == "Hello, world!"
+    assert response.headers["set-cookie"] == "mycookie=myvalue; Path=/"
 
 
 @pytest.mark.parametrize(
