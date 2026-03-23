@@ -2,6 +2,25 @@
 toc_depth: 2
 ---
 
+## 1.0.0 (March 22, 2026)
+
+Starlette 1.0 is here!
+
+After nearly eight years since its creation, Starlette has reached its first stable release.
+Thank you to everyone who tested the release candidate and reported issues.
+
+You can read more on the [blog post](https://marcelotryle.com/blog/2026/03/22/starlette-10-is-here/).
+
+#### Added
+
+* Track session access and modification in `SessionMiddleware` [#3166](https://github.com/encode/starlette/pull/3166).
+
+#### Fixed
+
+* Handle websocket denial responses in `StreamingResponse` and `FileResponse` [#3189](https://github.com/encode/starlette/pull/3189).
+* Use `bytearray` for field accumulation in `FormParser` [#3179](https://github.com/encode/starlette/pull/3179).
+* Move `parser.finalize()` inside try/except in `MultiPartParser.parse()` [#3153](https://github.com/encode/starlette/pull/3153).
+
 ## 1.0.0rc1 (February 23, 2026)
 
 We're ready! I'm thrilled to announce the first release candidate for Starlette 1.0.
