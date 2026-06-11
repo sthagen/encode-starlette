@@ -447,7 +447,7 @@ class TestClient(httpx.Client):
             warnings.warn(
                 "You should not use the 'timeout' argument with the TestClient. "
                 "See https://github.com/Kludex/starlette/issues/1108 for more information.",
-                DeprecationWarning,
+                StarletteDeprecationWarning,
                 stacklevel=2,
             )
         url = self._merge_url(url)

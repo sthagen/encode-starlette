@@ -11,12 +11,13 @@ import anyio
 from anyio.abc import ObjectReceiveStream, ObjectSendStream
 
 from starlette._utils import create_collapsing_task_group
+from starlette.exceptions import StarletteDeprecationWarning
 from starlette.types import Receive, Scope, Send
 
 warnings.warn(
     "starlette.middleware.wsgi is deprecated and will be removed in a future release. "
     "Please refer to https://github.com/abersheeran/a2wsgi as a replacement.",
-    DeprecationWarning,
+    StarletteDeprecationWarning,
     stacklevel=2,
 )
 
