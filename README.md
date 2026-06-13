@@ -51,7 +51,7 @@ It is production-ready, and gives you the following:
 $ pip install starlette
 ```
 
-You'll also want to install an ASGI server, such as [uvicorn](https://uvicorn.dev), [daphne](https://github.com/django/daphne/), or [hypercorn](https://hypercorn.readthedocs.io/en/latest/).
+You'll also want to install an ASGI server, such as [uvicorn](https://uvicorn.dev) or any of the [other ASGI server implementations](https://asgi.readthedocs.io/en/latest/implementations.html#servers).
 
 ```shell
 $ pip install uvicorn
